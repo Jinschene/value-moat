@@ -26,6 +26,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+// 移除直接 import，改为 CDN 动态加载，以兼容预览环境
+// import html2canvas from 'html2canvas'; 
 
 // --- Extracted Components (防止重新渲染闪烁) ---
 
@@ -195,22 +197,19 @@ const NewsCard = ({ item }) => {
 // --- Main Component ---
 
 const ValueMoat = () => {
-  // --- State Management ---
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('vm_api_key') || '');
   const [showSettings, setShowSettings] = useState(false);
   const [stockInput, setStockInput] = useState('');
   
-  // 升级：Stocks 状态现在存储对象 { name: string, date: string }
   const [stocks, setStocks] = useState(() => {
     const saved = localStorage.getItem('vm_stocks');
     if (!saved) return [];
     try {
       const parsed = JSON.parse(saved);
-      // 数据迁移逻辑：如果发现旧数据是字符串数组，自动转换为对象格式
       if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
         return parsed.map(s => ({
           name: s,
-          date: new Date().toLocaleDateString() // 默认为当天
+          date: new Date().toLocaleDateString() 
         }));
       }
       return parsed;
@@ -224,16 +223,14 @@ const ValueMoat = () => {
   const [validating, setValidating] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   
-  // 每日名言 State
   const [dailyQuote, setDailyQuote] = useState({
     text: "我们从不试图通过预测风向来赚钱，我们赚钱是因为我们买的是能够经受暴风雨的坚固城堡。",
     author: "查理·芒格",
     loading: false
   });
 
-  const reportRef = useRef(null); // Ref for capturing image
+  const reportRef = useRef(null); 
 
-  // --- Effects ---
   useEffect(() => {
     localStorage.setItem('vm_stocks', JSON.stringify(stocks));
   }, [stocks]);
@@ -242,7 +239,7 @@ const ValueMoat = () => {
     localStorage.setItem('vm_api_key', apiKey);
   }, [apiKey]);
 
-  // Inject html2canvas for image generation
+  // Dynamically inject html2canvas for image generation (works in preview & local)
   useEffect(() => {
     if (!document.getElementById('html2canvas-script')) {
       const script = document.createElement('script');
@@ -253,9 +250,7 @@ const ValueMoat = () => {
     }
   }, []);
 
-  // --- AI Helper Functions ---
-  
-  // 工厂函数：创建指定配置的模型
+  // AI Factory
   const createModel = (key, modelName, useSearch) => {
     const genAI = new GoogleGenerativeAI(key);
     const config = { model: modelName };
@@ -265,18 +260,13 @@ const ValueMoat = () => {
     return genAI.getGenerativeModel(config);
   };
 
-  // 辅助函数：尝试多个模型，直到成功
   const runWithModelFallback = async (apiKey, useSearch, callback) => {
-    // 动态调整模型列表，优先使用 1.5-flash，因为它最稳定且支持广泛
+    // 动态调整模型列表: 优先使用当前环境支持的最新预览版
+    // 移除了 gemini-1.5-pro (避免 404 错误)
     const modelsToTry = [
-      "gemini-2.5-flash-preview-09-2025", // 尝鲜
-      "gemini-2.0-flash-exp",             // 实验版
-      "gemini-1.5-flash",                 // 稳定版
-      "gemini-1.5-flash-8b",              // 轻量版
-      "gemini-1.5-flash-002"              // 特定版本
+      "gemini-2.5-flash-preview-09-2025", 
+      "gemini-1.5-flash"
     ];
-    
-    // 移除了 gemini-pro，因为它经常报 404
     
     let lastError = null;
 
@@ -295,7 +285,7 @@ const ValueMoat = () => {
         try {
             console.log("Fallback: attempting no-search mode");
             const model = createModel(apiKey, "gemini-1.5-flash", false);
-            return await callback(model, true); // true indicates fallback mode
+            return await callback(model, true); 
         } catch (e) {
             console.error("Fallback failed:", e);
         }
@@ -304,7 +294,6 @@ const ValueMoat = () => {
     throw lastError;
   };
 
-  // 1. 智能校验股票
   const validateAndFormatStock = async (input) => {
     if (!apiKey) throw new Error("API Key 未配置");
     
@@ -313,9 +302,9 @@ const ValueMoat = () => {
         const prompt = `
           你是一个金融助手。用户输入了 "${input}"。
           1. 判断这是否是 A股 (沪深) 或 港股 的股票代码或名称。
-          2. 如果是，请返回标准格式："{代码} {标准名称}" (例如 "00700.HK 腾讯控股", "600519.SH 贵州茅台")。
+          2. 如果是，请返回标准格式："{代码} {标准名称}" (例如 "00700.HK 腾讯控股")。
           3. 如果不是有效股票，返回 "INVALID"。
-          只返回结果字符串，不要有markdown格式或其他废话。
+          只返回结果字符串，不要有markdown。
         `;
         const result = await model.generateContent(prompt);
         return result.response.text().trim();
@@ -326,7 +315,6 @@ const ValueMoat = () => {
     }
   };
 
-  // 获取随机大师名言 (支持搜索)
   const fetchRandomQuote = async () => {
     if (!apiKey) return;
     
@@ -337,7 +325,7 @@ const ValueMoat = () => {
       
       const data = await runWithModelFallback(apiKey, true, async (model, isFallback) => {
         const prompt = `
-          ${isFallback ? '请回忆' : '请利用 Google Search 搜索'} "${randomMaster}" 关于价值投资、长期主义、安全边际或企业护城河的经典语录。
+          ${isFallback ? '请回忆' : '请利用 Google Search 搜索'} "${randomMaster}" 关于价值投资的经典语录。
           返回 JSON 格式：{"text": "名言内容", "author": "${randomMaster}"}
           输出纯 JSON 字符串。
         `;
@@ -363,50 +351,38 @@ const ValueMoat = () => {
     }
   };
 
-  // 2. 实时搜索并分析
   const fetchAndAnalyzeNews = async (stockName) => {
     try {
       return await runWithModelFallback(apiKey, true, async (model, isFallback) => {
-        // 获取当前日期，用于辅助判断 30 天限制
         const today = new Date().toISOString().split('T')[0];
         
         const prompt = `
-          ${!isFallback ? `请利用 Google Search 搜索关于 "${stockName}" 的最新动态。` : `请根据你已知的知识库，分析 "${stockName}" 的近期基本面情况（注意：无实时搜索，仅基于历史知识）。`}
+          ${!isFallback ? `请利用 Google Search 搜索关于 "${stockName}" 的最新动态。` : `请根据知识库分析 "${stockName}" 的近期基本面。`}
           
           **当前日期**：${today}
+          **时间限制**：仅限最近30天内资讯。超期直接丢弃。
           
-          **关键搜索维度 (风险优先)**：
-          1. **风险与利空 (最高权重)**：主动搜索该公司的负面新闻、业绩下滑、大股东减持、法律诉讼、监管处罚。
-          2. **公司本体**：最新的公告、财报、分红回购。
-          3. **行业与政策**：所属行业动态及宏观政策影响。
-          
-          **时间范围严格限制**：
-          - 仅限 **最近 30 天内** (即 ${today} 往前推30天) 发生的资讯。
-          - **严禁**包含超过 1 个月前的旧闻。如果只有旧闻，请返回空数组。
+          **搜索维度**：
+          1. **风险与利空 (30%以上权重)**：业绩下滑、减持、诉讼、监管。
+          2. **公司本体**：公告、财报、分红。
+          3. **行业政策**：宏观政策、行业变化。
 
-          搜索完成后，请完全模拟 **沃伦·巴菲特** 和 **段永平 (大道)** 的思维模型来审视结果。
+          **大师视角筛选**：
+          模拟 **巴菲特** 和 **段永平** 的思维。
+          - 段永平：这是否是"不对的事情"？生意模式变好了吗？
+          - 巴菲特：护城河加宽了吗？
 
-          【核心筛选逻辑：大师视角】：
-          1. **段永平视角**：公司是否在做"不对的事情"（不本分）？生意模式变好了还是变差了？
-          2. **巴菲特视角**：护城河是加宽还是填平了？资本配置是否理智？
-
-          【筛选与生成法则 (严格执行)】：
-          1. **时效性熔断**：首先检查每条资讯的时间。**超过30天的直接丢弃**。
-          2. **利空占比要求**：请**优先保留**所有真实的负面/风险类资讯。如果存在此类风险，请尽量使其在结果中的占比达到 **30% 以上**。
-          3. **极度严苛的降噪**：坚决剔除股价短期波动、技术面分析等噪音。
-          4. **弹性数量**：如果有重大事件，最多返回 3 条。如果没有，1条或0条均可。
-          
-          请将结果整理为 JSON 格式数组。每个对象包含：
+          请返回 JSON 数组。每个对象包含：
           - type: "公司" | "行业" | "政策"
-          - summary: 详实的资讯摘要。
+          - summary: 资讯摘要。
           - sentiment: "bullish" | "bearish" | "neutral"
-          - reason: 一句话解释其价值逻辑（**直接阐述对护城河、商业模式的影响，不要提及具体名人姓名**）。
-          - source: ${!isFallback ? '新闻来源名称' : 'AI 知识库'}
+          - reason: 价值逻辑（**不提人名，只谈逻辑**）。
+          - source: ${!isFallback ? '来源名称' : 'AI 知识库'}
           - url: ${!isFallback ? '原始链接' : 'null'}
           - time: 发布时间。
           - is_fresh: true/false.
 
-          输出纯 JSON 字符串，无 Markdown 标记。
+          输出纯 JSON。
         `;
 
         const result = await model.generateContent(prompt);
@@ -420,8 +396,6 @@ const ValueMoat = () => {
       return []; 
     }
   };
-
-  // --- Handlers ---
 
   const handleAddStock = async () => {
     if (!stockInput.trim()) return;
@@ -466,7 +440,7 @@ const ValueMoat = () => {
     } catch (e) {
       console.error("Add stock error:", e);
       let errorMsg = `校验失败: ${e.message || "未知错误"}`;
-      if (e.message && e.message.includes("fetch")) errorMsg = "连接失败：Google API 无法访问 (请开启 VPN)";
+      if (e.message && e.message.includes("fetch")) errorMsg = "网络连接失败，请检查网络设置。";
       
       const confirmForce = window.confirm(`${errorMsg}\n\n是否跳过校验，强制添加 "${stockInput}"？`);
       
